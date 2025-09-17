@@ -186,7 +186,7 @@ async function main() {
     7: "システム開発3部",
     8: "エンベデッド部",
     9: "人事DX部",
-    10: "ビジネスサポート部",
+    10: "ビジネスサポート部12",
   };
   const mappedName = map[choice];
 
