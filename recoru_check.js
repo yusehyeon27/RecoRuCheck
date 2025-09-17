@@ -46,7 +46,7 @@ async function selectBushoByIndex(page, listSelector, choice) {
     console.log(`✅ ${items[index].text} 選択完了`);
     return true;
   } else {
-    console.error("handle.clickが見つかりません");
+    console.error("깃허브테스트handle.clickが見つかりません깃허브테스트");
     return false;
   }
 }
