@@ -156,6 +156,9 @@ async function login(page, browser) {
   }
 }
 
+// ----------------------
+// 社員チェック
+// ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
   const dd = String(day).padStart(2, "0");
@@ -163,38 +166,39 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
   let hasNextPage = true;
 
-  // 2️⃣ 테이블 로딩 대기
   while (hasNextPage) {
     await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
-    const links = await page.$$eval(
+    const staffList = await page.$$eval(
       `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
-      (els) => els.map((el) => el.href)
+      (els) =>
+        els.map((el) => ({
+          href: el.href,
+          name: el.textContent.trim(),
+        }))
     );
 
-    console.log(`총 ${links.length}명의 사원 링크 수집 완료`);
+    console.log(`${staffList.length}人の社員リスト取得完了`);
 
-    // 4️⃣ 각 사원 순회
-    for (const href of links) {
+    for (const staff of staffList) {
       const staffPage = await page.browser().newPage();
-      await staffPage.goto(href, { waitUntil: "networkidle2" });
+      await staffPage.goto(staff.href, { waitUntil: "networkidle2" });
 
-      console.log(`✅ 처리중: ${href}`);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
       await staffPage.close();
     }
 
     const nextButton = await page.$('div.pager li[onclick="nextPage();"]');
     if (nextButton) {
-      console.log("➡ 다음 페이지로 이동");
+      console.log("➡ 次のページに移動");
       await Promise.all([
         page.waitForNavigation({ waitUntil: "networkidle2" }),
         nextButton.click(),
       ]);
-      // 잠깐 대기
-      await page.waitForTimeout(500);
+      await new Promise((res) => setTimeout(res, 500));
     } else hasNextPage = false;
   }
-  console.log("모든 사원 처리 완료");
+  console.log("全社員処理完了");
 }
 
 // ----------------------
