@@ -155,6 +155,42 @@ async function login(page, browser) {
   }
 }
 
+async function processStaffPages(page, yearInput, monthInput, day = 1) {
+  // 1️⃣ 연월일 문자열 생성
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  const trClass = `${year}${mm}${dd}`; // ex: 20250701
+
+  // 2️⃣ 테이블 로딩 대기
+  await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
+
+  // 3️⃣ 사원 링크 수집
+  const links = await page.$$eval(
+    `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
+    (els) => els.map((el) => el.href)
+  );
+
+  console.log(`총 ${links.length}명의 사원 링크 수집 완료`);
+
+  // 4️⃣ 각 사원 순회
+  for (const href of links) {
+    const staffPage = await page.browser().newPage();
+    await staffPage.goto(href, { waitUntil: "networkidle2" });
+
+    console.log(`✅ 처리중: ${href}`);
+
+    // TODO: 각 사원 근무표 확인/데이터 추출/스크린샷 등
+    // 예시: 스크린샷 저장
+    // const staffId = href.split("ui=")[1].split("&")[0];
+    // await staffPage.screenshot({ path: `screenshots/${staffId}.png` });
+
+    // 처리 끝나면 탭 닫기
+    await staffPage.close();
+  }
+
+  console.log("모든 사원 처리 완료");
+}
+
 // ----------------------
 // メイン
 // ----------------------
