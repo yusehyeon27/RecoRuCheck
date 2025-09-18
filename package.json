@@ -11,6 +11,8 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "dotenv": "^17.2.2",
+    "playwright": "^1.55.0",
     "prompt-sync": "^4.2.0",
     "puppeteer": "^24.21.0"
   }

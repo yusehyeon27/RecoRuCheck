@@ -1,8 +1,8 @@
 require("dotenv").config();
-const puppeteer = require("puppeteer");
 const fs = require("fs");
 const path = require("path");
 const prompt = require("prompt-sync")();
+const { chromium } = require("playwright");
 
 // ----------------------
 // config.json読み込み
@@ -42,12 +42,12 @@ async function selectBushoByIndex(page, listSelector, choice) {
   const sel = `#SIDE-MENU li[id="${targetId}"] a`;
   const handle = await page.$(sel);
   if (handle) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await page.waitForTimeout(500);
     await handle.click();
     console.log(`✅ ${items[index].text} 選択完了`);
     return true;
   } else {
-    console.error("깃허브테스트handle.clickが見つかりません깃허브테스트");
+    console.error("handle.clickが見つかりません");
     return false;
   }
 }
@@ -109,7 +109,7 @@ async function selectYearMonth(page, targetYear, targetMonth) {
     } else {
       await page.click(".ui-datepicker-next");
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await page.waitForTimeout(200);
   }
 
   await page.$$eval(".ui-datepicker-calendar td a", (els) => {
@@ -121,28 +121,45 @@ async function selectYearMonth(page, targetYear, targetMonth) {
 }
 
 // ----------------------
-// ログイン (失敗時処理付き)
+// ログイン
 // ----------------------
-async function login(page, browser) {
-  // アラート検知
+async function login(page, context) {
   page.on("dialog", async (dialog) => {
     console.error("❌ ログイン失敗: " + dialog.message());
     await dialog.dismiss();
-    await browser.close();
+    await context.close();
     process.exit(1);
   });
 
-  await page.goto("https://app.recoru.in/ap/", { waitUntil: "networkidle2" });
-  await page.type("#contractId", config.recoru.RECORU_CONTRACTID);
-  await page.type("#authId", config.recoru.RECORU_USER);
-  await page.type("#password", config.recoru.RECORU_PASS);
+  await page.goto("https://app.recoru.in/ap/", { waitUntil: "networkidle" });
+  //await page.waitForSelector("#authId", { timeout: 5000 });
+
+  //const isLoggedIn = (await page.$("#authId")) === null;
+  const currentUrl = page.url();
+  if (currentUrl.includes("/ap/home")) {
+    console.log("⚠ 이미 로그인된 상태입니다. 로그아웃 후 재로그인 합니다.");
+    try {
+      await page.click(".text-overflow-hidden"); // 유저 메뉴 열기
+      await page.waitForSelector(".icon-exit-to-app", { timeout: 5000 });
+      await page.click(".icon-exit-to-app"); // 로그아웃 버튼
+      await page.waitForSelector("#authId", { timeout: 10000 });
+      console.log("✅ 로그아웃 성공");
+    } catch (err) {
+      console.error("❌ 로그아웃 실패: " + err.message);
+      await context.close();
+      process.exit(1);
+    }
+  }
+  await page.waitForSelector("#authId", { timeout: 5000 });
+  await page.fill("#contractId", config.recoru.RECORU_CONTRACTID);
+  await page.fill("#authId", config.recoru.RECORU_USER);
+  await page.fill("#password", config.recoru.RECORU_PASS);
 
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle0" }),
+    page.waitForNavigation({ waitUntil: "networkidle" }),
     page.click('input[type="button"]'),
   ]);
 
-  // ログイン成功を確認 (#m2)
   try {
     await page.waitForSelector("#m2", { timeout: 5000 });
     await page.click("#m2");
@@ -151,57 +168,100 @@ async function login(page, browser) {
     console.error(
       "❌ ログインに失敗しました。ID/パスワードを確認してください。"
     );
-    await browser.close();
+    await context.close();
     process.exit(1);
   }
 }
 
+// ----------------------
+// 社員チェック
+// ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
   const dd = String(day).padStart(2, "0");
-  const trClass = `${yearInput}${mm}${dd}`; // ex: 20250701
+  const trClass = `${yearInput}${mm}${dd}`;
 
   let hasNextPage = true;
 
-  // 2️⃣ 테이블 로딩 대기
   while (hasNextPage) {
     await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
-    const links = await page.$$eval(
+    const staffList = await page.$$eval(
       `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
-      (els) => els.map((el) => el.href)
+      (els) => els.map((el) => ({ href: el.href, name: el.textContent.trim() }))
     );
 
-    console.log(`총 ${links.length}명의 사원 링크 수집 완료`);
+    console.log(`${staffList.length}人の社員リスト取得完了`);
 
-    // 4️⃣ 각 사원 순회
-    for (const href of links) {
-      const staffPage = await page.browser().newPage();
-      await staffPage.goto(href, { waitUntil: "networkidle2" });
+    for (const staff of staffList) {
+      const staffPage = await page.context().newPage();
+      await staffPage.goto(staff.href, { waitUntil: "networkidle" });
 
-      console.log(`✅ 처리중: ${href}`);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
+      try {
+        // チェックボタン 클릭
+        await staffPage.waitForSelector("#checker", { timeout: 5000 });
+        await staffPage.click("#checker");
+        //console.log(`👉 ${staff.name} チェック完了`);
+        await staffPage.waitForSelector(
+          ".ui-dialog-content.ui-widget-content",
+          { timeout: 5000 }
+        );
+
+        // 팝업 텍스트 추출
+        const dialogText = await staffPage.$eval(
+          ".ui-dialog-content.ui-widget-content",
+          (el) => el.innerText.trim()
+        );
+
+        console.log(`👉 ${staff.name} チェック結果: ${dialogText}`);
+
+        try {
+          await staffPage.keyboard.press("Escape");
+          console.log("✅ チェック結果ダイアログをESCで閉じました");
+        } catch (err) {
+          console.error(
+            "❌ ESCでダイアログを閉じられませんでした: " + err.message
+          );
+        }
+
+        if (dialogText.includes("エラーはありません")) {
+          try {
+            await staffPage.waitForSelector(
+              'label[for="CHECKBOX-approved_2"]',
+              { timeout: 5000 }
+            );
+            await staffPage.click('label[for="CHECKBOX-approved_2"]');
+            console.log(`✅ ${staff.name} 承認チェック完了`);
+          } catch (err) {
+            console.error(`❌ ${staff.name} 承認チェック失敗: ${err.message}`);
+          }
+        }
+
+        await staffPage.waitForTimeout(2000);
+      } catch (err) {
+        console.error(`❌ ${staff.name} チェック失敗: ${err.message}`);
+      }
+
       await staffPage.close();
     }
 
     const nextButton = await page.$('div.pager li[onclick="nextPage();"]');
     if (nextButton) {
-      console.log("➡ 다음 페이지로 이동");
+      console.log("➡ 次のページに移動");
       await Promise.all([
-        page.waitForNavigation({ waitUntil: "networkidle2" }),
+        page.waitForNavigation({ waitUntil: "networkidle" }),
         nextButton.click(),
       ]);
-      // 잠깐 대기
       await page.waitForTimeout(500);
     } else hasNextPage = false;
   }
-  console.log("모든 사원 처리 완료");
+  console.log("全社員処理完了");
 }
 
 // ----------------------
 // メイン
 // ----------------------
 async function main() {
-  // CLI入力
   console.log("部署を選択してください：");
   console.log("1: 経営総括部");
   console.log("2: 大阪本社");
@@ -232,27 +292,46 @@ async function main() {
   };
   const mappedName = map[choice];
 
-  // ブラウザ起動
-  const browser = await puppeteer.launch({
-    headless: false,
-    executablePath: config.chrome.CHROME_PATH,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--start-maximized"],
-    defaultViewport: null,
-  });
-  const page = await browser.newPage();
+  const profile = config.profile.USER_CHROME_PATH;
+  const expath = config.extensions.EXTENSION_PATH;
+  const temp = config.temp.TEMP_PROFILE_PATH;
 
-  // ログイン実行 (失敗時は自動終了)
-  await login(page, browser);
+  if (!fs.existsSync(temp)) {
+    fs.mkdirSync(temp, { recursive: true });
+  }
+
+  console.log("User Chrome Path:", profile);
+  console.log("Extension Path:", expath);
+
+  // Playwright에서 Persistent Context 사용
+  const context = await chromium.launchPersistentContext(
+    profile, // 기존 프로필
+    {
+      headless: false,
+      executablePath: config.edge.EDGE_PATH,
+      args: [
+        "--load-extension=${expath}",
+        "--start-maximized",
+        "--disable-extensions-except=" + expath,
+      ], // 확장은 따로 args로 추가
+      viewport: null,
+    }
+  );
+
+  const page = await context.newPage();
+
+  // 로그인 실행
+  await login(page, context);
 
   const listSelector = "#SIDE-MENU li";
 
-  // 部署選択実行
   let okA = await selectBushoByIndex(page, listSelector, choice);
   if (!okA && mappedName) {
     await selectBushoByName(page, listSelector, mappedName);
   }
 
-  // 年月選択実行
+  //await page.pause();
+
   await selectYearMonth(page, yearInput, monthInput);
 
   console.log(
@@ -261,8 +340,7 @@ async function main() {
 
   await processStaffPages(page, yearInput, monthInput);
 
-  // ブラウザ閉じる
-  // await browser.close();
+  // context.close() // 종료할 때
 }
 
 main();
