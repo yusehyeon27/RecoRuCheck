@@ -201,20 +201,41 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
         // チェックボタン 클릭
         await staffPage.waitForSelector("#checker", { timeout: 5000 });
         await staffPage.click("#checker");
-        //console.log(`👉 ${staff.name} チェック完了`);
+
+        // 팝업 대기
         await staffPage.waitForSelector(
           ".ui-dialog-content.ui-widget-content",
-          { timeout: 5000 }
+          {
+            timeout: 5000,
+          }
         );
 
-        // 팝업 텍스트 추출
-        const dialogText = await staffPage.$eval(
-          ".ui-dialog-content.ui-widget-content",
-          (el) => el.innerText.trim()
+        // 팝업 텍스트들 추출
+        const popupTexts = await staffPage.$$eval(
+          "div.ui-dialog-content",
+          (els) => els.map((el) => el.innerText.trim())
         );
 
-        console.log(`👉 ${staff.name} チェック結果: ${dialogText}`);
+        let hasError = false;
+        const errorLogPath = path.join(process.cwd(), "error_log.txt");
 
+        for (const text of popupTexts) {
+          console.log(`👉 ${staff.name} チェック結果: ${text}`);
+          if (
+            text !== "エラーはありません" &&
+            text !== "エラーはありません。"
+          ) {
+            hasError = true;
+            console.error(`❌ ${staff.name} 에러 발생:\n${text}`);
+            fs.appendFileSync(
+              errorLogPath,
+              `${staff.name}\n${text}\n\n`,
+              "utf8"
+            );
+          }
+        }
+
+        // ESC로 팝업 닫기
         try {
           await staffPage.keyboard.press("Escape");
           console.log("✅ チェック結果ダイアログをESCで閉じました");
@@ -224,11 +245,14 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           );
         }
 
-        if (dialogText.includes("エラーはありません")) {
+        // 에러가 없을 경우 승인 체크
+        if (!hasError) {
           try {
             await staffPage.waitForSelector(
               'label[for="CHECKBOX-approved_2"]',
-              { timeout: 5000 }
+              {
+                timeout: 5000,
+              }
             );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
             console.log(`✅ ${staff.name} 承認チェック完了`);
