@@ -189,7 +189,42 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
       await staffPage.goto(staff.href, { waitUntil: "networkidle" });
 
       console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
-      await staffPage.waitForTimeout(300);
+      try {
+        // チェックボタン 클릭
+        await staffPage.waitForSelector("#checker", { timeout: 5000 });
+        await staffPage.click("#checker");
+        console.log(`👉 ${staff.name} チェック完了`);
+        await staffPage.waitForTimeout(1000);
+
+        const popupTexts = await staffPage.$$eval(
+          "div.ui-dialog-content",
+          (els) => els.map((el) => el.innerText.trim())
+        );
+
+        // 각 팝업 확인
+        let hasError = false;
+        const errorLogPath = path.join(process.cwd(), "error_log.txt");
+
+        for (const text of popupTexts) {
+          if (text !== "エラーはありません。") {
+            hasError = true;
+            console.error(`❌ ${staff.name} 에러 발생:\n${text}`);
+            fs.appendFileSync(
+              errorLogPath,
+              `${staff.name}\n${text}\n\n`,
+              "utf8"
+            );
+          }
+        }
+
+        if (!hasError) console.log(`✅ ${staff.name} 에러 없음`);
+
+        // 2초 대기
+        await staffPage.waitForTimeout(2000);
+      } catch (err) {
+        console.error(`❌ ${staff.name} チェック失敗: ${err.message}`);
+      }
+
       await staffPage.close();
     }
 
