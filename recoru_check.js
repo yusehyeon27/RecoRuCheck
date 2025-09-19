@@ -189,15 +189,14 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const trClass = `${yearInput}${mm}${dd}`;
 
   let hasNextPage = true;
-  const attachments = [];
+  let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 ===\n\n`;
+
   const ERROR_LOG_DIR = path.isAbsolute(config.error.ERROR_LOG_DIR)
     ? config.error.ERROR_LOG_DIR
     : path.join(process.cwd(), config.error.ERROR_LOG_DIR);
+
   if (!fs.existsSync(ERROR_LOG_DIR))
     fs.mkdirSync(ERROR_LOG_DIR, { recursive: true });
-
-  const errorLogPath = path.join(ERROR_LOG_DIR, "error.log");
-  if (fs.existsSync(errorLogPath)) fs.unlinkSync(errorLogPath);
 
   while (hasNextPage) {
     await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
@@ -209,6 +208,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
     console.log(`${staffList.length}人の社員リスト取得完了`);
 
     for (const staff of staffList) {
+      let hasError = false;
       const staffPage = await page.context().newPage();
       await staffPage.goto(staff.href, { waitUntil: "networkidle" });
 
@@ -232,8 +232,6 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           (els) => els.map((el) => el.innerText.trim())
         );
 
-        let hasError = false;
-
         for (const text of popupTexts) {
           console.log(`👉 ${staff.name} チェック結果: ${text}`);
           if (
@@ -241,41 +239,32 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             text !== "エラーはありません。"
           ) {
             hasError = true;
-
-            fs.appendFileSync(
-              errorLogPath,
-              `${staff.name}\n${text}\n\n`,
-              "utf8"
-            );
+            logContent += `❌ ${staff.name}\nエラー: \n${text}\n\n`;
           }
         }
-
-        if (!hasError) {
-          try {
-            await staffPage.waitForSelector(
-              'label[for="CHECKBOX-approved_2"]',
-              { timeout: 5000 }
-            );
-            await staffPage.click('label[for="CHECKBOX-approved_2"]');
-            console.log(`✅ ${staff.name} 承認チェック完了`);
-          } catch (err) {
-            console.error(`❌ ${staff.name} 承認チェック失敗: ${err.message}`);
-          }
-        }
-
         // ESC로 팝업 닫기
         try {
           await staffPage.keyboard.press("Escape");
-          console.log("✅ チェック結果ダイアログをESCで閉じました");
-        } catch (err) {
-          console.error(
-            "❌ ESCでダイアログを閉じられませんでした: " + err.message
-          );
-        }
-
+        } catch {}
         await staffPage.waitForTimeout(2000);
       } catch (err) {
         console.error(`❌ ${staff.name} チェック失敗: ${err.message}`);
+        logContent += `❌ ${staff.name} チェック失敗: ${err.message}\n`;
+        hasError = true;
+      }
+
+      if (!hasError) {
+        try {
+          await staffPage.waitForSelector('label[for="CHECKBOX-approved_2"]', {
+            timeout: 5000,
+          });
+          await staffPage.click('label[for="CHECKBOX-approved_2"]');
+          console.log(`✅ ${staff.name} 承認チェック完了`);
+          logContent += `✅ ${staff.name} 承認チェック完了\n\n`;
+        } catch (err) {
+          console.error(`❌ ${staff.name} 承認チェック失敗: ${err.message}`);
+          logContent += `❌ ${staff.name} 承認チェック失敗: ${err.message}\n`;
+        }
       }
 
       await staffPage.close();
@@ -292,14 +281,11 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
     } else hasNextPage = false;
   }
   console.log("全社員処理完了");
-  if (fs.existsSync(errorLogPath)) {
-    attachments.push({ filename: "error.log", path: errorLogPath });
-  }
 
-  return attachments;
+  return logContent;
 }
 
-async function sendGmail(logContent, attachments, yearInput, monthInput) {
+async function sendMail(attachments, mappedName, yearInput, monthInput) {
   const transporter = nodemailer.createTransport({
     host: "smtp.worksmobile.com",
     port: 587,
@@ -317,13 +303,13 @@ async function sendGmail(logContent, attachments, yearInput, monthInput) {
   const mailOptions = {
     from: config.from.LINE_USER,
     to: config.mail.MAIL_TO,
-    subject: ` ${yearInput}年 ${monthInput}月のRecoRuチェック結果`,
-    text: logContent,
+    subject: `${mappedName} ${yearInput}年 ${monthInput}月のRecoRuチェック結果`,
+    text: `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果`,
     attachments: attachments,
   };
 
   await transporter.sendMail(mailOptions);
-  console.log("📧 Gmailで結果ログ + エラーファイル送信完了");
+  console.log("📧 メール送信完了");
 }
 
 // ----------------------
@@ -402,18 +388,21 @@ async function main() {
   console.log(
     `部署、年月選択完了：${mappedName}, ${yearInput}年 ${monthInput}月`
   );
+  const logContent = await processStaffPages(page, yearInput, monthInput);
 
-  const attachments = await processStaffPages(page, yearInput, monthInput);
-
+  const logFileName = `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果.log`;
   const logPath = path.join(
-    config.error.ERROR_LOG_DIR,
-    `upload_result_${timestamp}.txt`
+    path.isAbsolute(config.error.ERROR_LOG_DIR)
+      ? config.error.ERROR_LOG_DIR
+      : path.join(process.cwd(), config.error.ERROR_LOG_DIR),
+    logFileName
   );
-  const logContent = `「${mappedName}」の${yearInput}年 ${monthInput}月の全社員チェック完了です。`;
   fs.writeFileSync(logPath, logContent, "utf8");
-  console.log("📄 結果保存: " + logPath);
+  console.log("📄 ログ保存完了: " + logPath);
 
-  await sendGmail(logContent, attachments, yearInput, monthInput);
+  const attachments = [{ filename: logFileName, path: logPath }];
+
+  await sendMail(attachments, mappedName, yearInput, monthInput);
   // context.close() // 종료할 때
 }
 
