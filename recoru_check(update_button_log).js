@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const prompt = require("prompt-sync")();
 const { chromium } = require("playwright");
+const nodemailer = require("nodemailer");
 
 // ----------------------
 // config.json読み込み
@@ -132,20 +133,17 @@ async function login(page, context) {
   });
 
   await page.goto("https://app.recoru.in/ap/", { waitUntil: "networkidle" });
-  //await page.waitForSelector("#authId", { timeout: 5000 });
-
-  //const isLoggedIn = (await page.$("#authId")) === null;
   const currentUrl = page.url();
   if (currentUrl.includes("/ap/home")) {
-    console.log("⚠ 이미 로그인된 상태입니다. 로그아웃 후 재로그인 합니다.");
+    console.log("⚠ すでにログイン済みです。 ログアウト後、再ログインします。");
     try {
-      await page.click(".text-overflow-hidden"); // 유저 메뉴 열기
+      await page.click(".text-overflow-hidden");
       await page.waitForSelector(".icon-exit-to-app", { timeout: 5000 });
-      await page.click(".icon-exit-to-app"); // 로그아웃 버튼
+      await page.click(".icon-exit-to-app");
       await page.waitForSelector("#authId", { timeout: 10000 });
-      console.log("✅ 로그아웃 성공");
+      console.log("✅ログアウト 完了");
     } catch (err) {
-      console.error("❌ 로그아웃 실패: " + err.message);
+      console.error("❌ログアウト 失敗: " + err.message);
       await context.close();
       process.exit(1);
     }
@@ -174,7 +172,7 @@ async function login(page, context) {
 }
 
 // ----------------------
-// 社員チェック (更新ボタン 누르지 않고 로그만 출력)
+// 社員チェック (承認チェックはクリック + 更新ボタンもクリック)
 // ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
@@ -182,6 +180,15 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const trClass = `${yearInput}${mm}${dd}`;
 
   let hasNextPage = true;
+  let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 ===\n\n`;
+
+  const ERROR_LOG_DIR = path.isAbsolute(config.error.ERROR_LOG_DIR)
+    ? config.error.ERROR_LOG_DIR
+    : path.join(process.cwd(), config.error.ERROR_LOG_DIR);
+
+  if (!fs.existsSync(ERROR_LOG_DIR)) {
+    fs.mkdirSync(ERROR_LOG_DIR, { recursive: true });
+  }
 
   while (hasNextPage) {
     await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
@@ -193,14 +200,17 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
     console.log(`${staffList.length}人の社員リスト取得完了`);
 
     for (const staff of staffList) {
+      let hasError = false;
       const staffPage = await page.context().newPage();
       await staffPage.goto(staff.href, { waitUntil: "networkidle" });
 
       console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
       try {
+        // チェックボタン クリック
         await staffPage.waitForSelector("#checker", { timeout: 5000 });
         await staffPage.click("#checker");
 
+        // ポップアップ待機
         await staffPage.waitForSelector(
           ".ui-dialog-content.ui-widget-content",
           {
@@ -208,13 +218,11 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           }
         );
 
+        // ポップアップテキスト抽出
         const popupTexts = await staffPage.$$eval(
           "div.ui-dialog-content",
           (els) => els.map((el) => el.innerText.trim())
         );
-
-        let hasError = false;
-        const errorLogPath = path.join(process.cwd(), "error_log.txt");
 
         for (const text of popupTexts) {
           console.log(`👉 ${staff.name} チェック結果: ${text}`);
@@ -223,15 +231,11 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             text !== "エラーはありません。"
           ) {
             hasError = true;
-            console.error(`❌ ${staff.name} 에러 발생:\n${text}`);
-            fs.appendFileSync(
-              errorLogPath,
-              `${staff.name}\n${text}\n\n`,
-              "utf8"
-            );
+            logContent += `❌ ${staff.name}\nエラー: \n${text}\n\n`;
           }
         }
 
+        // ESCでポップアップ閉じる
         try {
           await staffPage.keyboard.press("Escape");
           console.log("✅ チェック結果ダイアログをESCで閉じました");
@@ -241,24 +245,35 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           );
         }
 
+        // エラーがない場合のみ承認チェック実行 + 更新ボタン実行
         if (!hasError) {
           try {
             await staffPage.waitForSelector(
               'label[for="CHECKBOX-approved_2"]',
-              {
-                timeout: 5000,
-              }
+              { timeout: 5000 }
             );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
             console.log(`✅ ${staff.name} 承認チェック完了`);
-            console.log(`📝 (更新ボタンは押さずにログ만 출력)`);
+            logContent += `✅ ${staff.name} 承認チェック完了\n`;
+
+            // ✅ 更新ボタン実際にクリック
+            await staffPage.waitForSelector("#UPDATE-BTN", { timeout: 5000 });
+            await staffPage.click("#UPDATE-BTN");
+            console.log(`✅ ${staff.name} 更新ボタン押下完了\n`);
+            logContent += `✅ ${staff.name} 更新ボタン押下完了\n\n`;
+
+            await staffPage.waitForTimeout(2000);
           } catch (err) {
-            console.error(`❌ ${staff.name} 承認チェック失敗: ${err.message}`);
+            console.error(
+              `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}`
+            );
+            logContent += `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}\n`;
           }
         }
-        await staffPage.waitForTimeout(2000);
       } catch (err) {
         console.error(`❌ ${staff.name} チェック失敗: ${err.message}`);
+        logContent += `❌ ${staff.name} チェック失敗: ${err.message}\n`;
+        hasError = true;
       }
 
       await staffPage.close();
@@ -272,9 +287,39 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
         nextButton.click(),
       ]);
       await page.waitForTimeout(500);
-    } else hasNextPage = false;
+    } else {
+      hasNextPage = false;
+    }
   }
   console.log("全社員処理完了");
+
+  return logContent;
+}
+
+async function sendMail(attachments, mappedName, yearInput, monthInput) {
+  const transporter = nodemailer.createTransport({
+    host: "smtp.worksmobile.com",
+    port: 587,
+    secure: false,
+    auth: {
+      user: config.from.LINE_USER,
+      pass: config.from.LINE_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+
+  const mailOptions = {
+    from: config.from.LINE_USER,
+    to: config.mail.MAIL_TO,
+    subject: `${mappedName} ${yearInput}年 ${monthInput}月のRecoRuチェック結果`,
+    text: `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果`,
+    attachments: attachments,
+  };
+
+  await transporter.sendMail(mailOptions);
+  console.log("📧 メール送信完了");
 }
 
 // ----------------------
@@ -322,44 +367,50 @@ async function main() {
   console.log("User Chrome Path:", profile);
   console.log("Extension Path:", expath);
 
-  // Playwright에서 Persistent Context 사용
-  const context = await chromium.launchPersistentContext(
-    profile, // 기존 프로필
-    {
-      headless: false,
-      executablePath: config.edge.EDGE_PATH,
-      args: [
-        "--load-extension=${expath}",
-        "--start-maximized",
-        "--disable-extensions-except=" + expath,
-      ], // 확장은 따로 args로 추가
-      viewport: null,
-    }
-  );
+  // Playwright Persistent Context
+  const context = await chromium.launchPersistentContext(profile, {
+    headless: false,
+    executablePath: config.edge.EDGE_PATH,
+    args: [
+      `--load-extension=${expath}`,
+      "--start-maximized",
+      `--disable-extensions-except=${expath}`,
+    ],
+    viewport: null,
+  });
 
   const page = await context.newPage();
 
-  // 로그인 실행
+  // ログイン
   await login(page, context);
 
   const listSelector = "#SIDE-MENU li";
-
   let okA = await selectBushoByIndex(page, listSelector, choice);
   if (!okA && mappedName) {
     await selectBushoByName(page, listSelector, mappedName);
   }
-
-  //await page.pause();
 
   await selectYearMonth(page, yearInput, monthInput);
 
   console.log(
     `部署、年月選択完了：${mappedName}, ${yearInput}年 ${monthInput}月`
   );
+  const logContent = await processStaffPages(page, yearInput, monthInput);
 
-  await processStaffPages(page, yearInput, monthInput);
+  const logFileName = `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果.log`;
+  const logPath = path.join(
+    path.isAbsolute(config.error.ERROR_LOG_DIR)
+      ? config.error.ERROR_LOG_DIR
+      : path.join(process.cwd(), config.error.ERROR_LOG_DIR),
+    logFileName
+  );
+  fs.writeFileSync(logPath, logContent, "utf8");
+  console.log("📄 ログ保存完了: " + logPath);
 
-  // context.close() // 종료할 때
+  const attachments = [{ filename: logFileName, path: logPath }];
+  await sendMail(attachments, mappedName, yearInput, monthInput);
+
+  await context.close();
 }
 
 main();
