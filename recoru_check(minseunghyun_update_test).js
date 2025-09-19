@@ -261,6 +261,13 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
             console.log(`✅ ${staff.name} 承認チェック完了`);
 
+            // ✅ ダイアログ 핸들러 등록
+            staffPage.once("dialog", async (dialog) => {
+              console.log(`⚠ 確認ダイアログ表示: ${dialog.message()}`);
+              await dialog.accept(); // OK 클릭
+              console.log("✅ ダイアログOK押下完了");
+            });
+
             // ✅ [更新] 버튼 클릭
             await staffPage.waitForSelector("#UPDATE-BTN", { timeout: 5000 });
             await staffPage.click("#UPDATE-BTN");

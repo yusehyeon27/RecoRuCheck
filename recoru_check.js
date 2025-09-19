@@ -138,14 +138,14 @@ async function login(page, context) {
     process.exit(1);
   });
 
-  await page.goto("https://app.recoru.in/ap/", { waitUntil: "networkidle" });\
+  await page.goto("https://app.recoru.in/ap/", { waitUntil: "networkidle" });
   const currentUrl = page.url();
   if (currentUrl.includes("/ap/home")) {
     console.log("⚠ すでにログイン済みです。 ログアウト後、再ログインします。");
     try {
-      await page.click(".text-overflow-hidden"); 
+      await page.click(".text-overflow-hidden");
       await page.waitForSelector(".icon-exit-to-app", { timeout: 5000 });
-      await page.click(".icon-exit-to-app"); 
+      await page.click(".icon-exit-to-app");
       await page.waitForSelector("#authId", { timeout: 10000 });
       console.log("✅ログアウト 完了");
     } catch (err) {
@@ -178,7 +178,7 @@ async function login(page, context) {
 }
 
 // ----------------------
-// 社員チェック (安定化版)
+// 社員チェック (承認チェック + 更新 클릭 + Confirm accept)
 // ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
@@ -217,9 +217,12 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
         await staffPage.click("#checker");
 
         // ポップアップ待機
-        await staffPage.waitForSelector(".ui-dialog-content.ui-widget-content", {
-          timeout: 5000,
-        });
+        await staffPage.waitForSelector(
+          ".ui-dialog-content.ui-widget-content",
+          {
+            timeout: 5000,
+          }
+        );
 
         // ポップアップテキスト抽出
         const popupTexts = await staffPage.$$eval(
@@ -243,19 +246,31 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           await staffPage.keyboard.press("Escape");
           console.log("✅ チェック結果ダイアログをESCで閉じました");
         } catch (err) {
-          console.error("❌ ESCでダイアログを閉じられませんでした: " + err.message);
+          console.error(
+            "❌ ESCでダイアログを閉じられませんでした: " + err.message
+          );
         }
 
-        // エラーがない場合のみ承認＋更新
+        // エラーがない場合のみ承認＋更新実行
         if (!hasError) {
           try {
-            // 承認チェック
-            await staffPage.waitForSelector('label[for="CHECKBOX-approved_2"]', {
-              timeout: 5000,
-            });
+            // [確定２]チェック
+            await staffPage.waitForSelector(
+              'label[for="CHECKBOX-approved_2"]',
+              {
+                timeout: 5000,
+              }
+            );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
             console.log(`✅ ${staff.name} 承認チェック完了`);
             logContent += `✅ ${staff.name} 承認チェック完了\n`;
+
+            // (중요) Confirm 다이얼로그가 뜰 수 있으므로 클릭 전에 리스너 등록
+            staffPage.once("dialog", async (dialog) => {
+              console.log(`⚠ 確認ダイアログ表示: ${dialog.message()}`);
+              await dialog.accept(); // OK
+              console.log("✅ ダイアログOK押下完了");
+            });
 
             // [更新] ボタンクリック & 画面リロード待機
             await Promise.all([
@@ -263,8 +278,11 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
               staffPage.click("#UPDATE-BTN"),
             ]);
             console.log(`✅ ${staff.name} 更新ボタン押下完了`);
+            logContent += `✅ ${staff.name} 更新完了\n\n`;
           } catch (err) {
-            console.error(`❌ ${staff.name} 承認チェック/更新失敗: ${err.message}`);
+            console.error(
+              `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}`
+            );
             logContent += `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}\n`;
           }
         }
@@ -304,7 +322,6 @@ async function sendMail(attachments, mappedName, yearInput, monthInput) {
       pass: config.from.LINE_PASS,
     },
     tls: {
-      // 필요시 옵션 추가 (보안인증서 문제 있을 때만)
       rejectUnauthorized: false,
     },
   });
@@ -366,31 +383,28 @@ async function main() {
   console.log("User Chrome Path:", profile);
   console.log("Extension Path:", expath);
 
-  // Playwright에서 Persistent Context 사용
+  // Playwright Persistent Context
   const context = await chromium.launchPersistentContext(profile, {
     headless: false,
     executablePath: config.edge.EDGE_PATH,
     args: [
-      "--load-extension=${expath}",
+      `--load-extension=${expath}`,
       "--start-maximized",
-      "--disable-extensions-except=" + expath,
-    ], // 확장은 따로 args로 추가
+      `--disable-extensions-except=${expath}`,
+    ],
     viewport: null,
   });
 
   const page = await context.newPage();
 
-  // 로그인 실행
+  // ログイン
   await login(page, context);
 
   const listSelector = "#SIDE-MENU li";
-
   let okA = await selectBushoByIndex(page, listSelector, choice);
   if (!okA && mappedName) {
     await selectBushoByName(page, listSelector, mappedName);
   }
-
-  //await page.pause();
 
   await selectYearMonth(page, yearInput, monthInput);
 
@@ -410,9 +424,12 @@ async function main() {
   console.log("📄 ログ保存完了: " + logPath);
 
   const attachments = [{ filename: logFileName, path: logPath }];
-
   await sendMail(attachments, mappedName, yearInput, monthInput);
-  context.close();
+
+  await context.close();
 }
 
-main();
+main().catch((err) => {
+  console.error("❌ メイン処理中にエラー発生:", err);
+  process.exit(1);
+});
