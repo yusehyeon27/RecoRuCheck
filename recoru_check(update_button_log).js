@@ -172,7 +172,7 @@ async function login(page, context) {
 }
 
 // ----------------------
-// 社員チェック (承認チェックはクリック + 更新ボタンもクリック)
+// 社員チェック (承認チェックはクリック、更新は確認のみ)
 // ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
@@ -245,7 +245,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           );
         }
 
-        // エラーがない場合のみ承認チェック実行 + 更新ボタン実行
+        // エラーがない場合のみ承認チェック実行 + 更新ボタン確認
         if (!hasError) {
           try {
             await staffPage.waitForSelector(
@@ -256,18 +256,17 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             console.log(`✅ ${staff.name} 承認チェック完了`);
             logContent += `✅ ${staff.name} 承認チェック完了\n`;
 
-            // ✅ 更新ボタン実際にクリック
+            // 更新ボタンの存在確認のみ
             await staffPage.waitForSelector("#UPDATE-BTN", { timeout: 5000 });
-            await staffPage.click("#UPDATE-BTN");
-            console.log(`✅ ${staff.name} 更新ボタン押下完了\n`);
-            logContent += `✅ ${staff.name} 更新ボタン押下完了\n\n`;
-
-            await staffPage.waitForTimeout(2000);
+            console.log(
+              `🛈 ${staff.name} 更新ボタン確認済み（クリックなし） \n\n`
+            );
+            logContent += `🛈 ${staff.name} 更新ボタン確認済み（クリックなし）\n\n`;
           } catch (err) {
             console.error(
-              `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}`
+              `❌ ${staff.name} 承認チェック/更新確認失敗: ${err.message}`
             );
-            logContent += `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}\n`;
+            logContent += `❌ ${staff.name} 承認チェック/更新確認失敗: ${err.message}\n`;
           }
         }
       } catch (err) {
@@ -410,7 +409,7 @@ async function main() {
   const attachments = [{ filename: logFileName, path: logPath }];
   await sendMail(attachments, mappedName, yearInput, monthInput);
 
-  await context.close();
+  //await context.close();
 }
 
 main();
