@@ -190,9 +190,15 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
       (els) => els.map((el) => ({ href: el.href, name: el.textContent.trim() }))
     );
 
-    console.log(`${staffList.length}人の社員リスト取得完了`);
+    // 🔹 본인 이름만 필터링 (全社員 → 自分だけ)
+    const targetName = "ミン スンヒョン";
+    const filteredList = staffList.filter((staff) => staff.name === targetName);
 
-    for (const staff of staffList) {
+    console.log(
+      `${staffList.length}人の社員リスト取得完了 → フィルタ後: ${filteredList.length}人`
+    );
+
+    for (const staff of filteredList) {
       const staffPage = await page.context().newPage();
       await staffPage.goto(staff.href, { waitUntil: "networkidle" });
 
@@ -226,7 +232,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             text !== "エラーはありません。"
           ) {
             hasError = true;
-            console.error(`❌ ${staff.name} 에러 발생:\n${text}`);
+            console.error(`❌ ${staff.name} エラー発生:\n${text}`);
             fs.appendFileSync(
               errorLogPath,
               `${staff.name}\n${text}\n\n`,
@@ -245,17 +251,16 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           );
         }
 
-        // 에러가 없을 경우 승인 체크
+        // 에러가 없을 경우 승인 체크 + 更新
         if (!hasError) {
           try {
             await staffPage.waitForSelector(
               'label[for="CHECKBOX-approved_2"]',
-              {
-                timeout: 5000,
-              }
+              { timeout: 5000 }
             );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
             console.log(`✅ ${staff.name} 承認チェック完了`);
+
             // ✅ [更新] 버튼 클릭
             await staffPage.waitForSelector("#UPDATE-BTN", { timeout: 5000 });
             await staffPage.click("#UPDATE-BTN");
@@ -275,19 +280,11 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
       await staffPage.close();
     }
 
-    const nextButton = await page.$('div.pager li[onclick="nextPage();"]');
-    if (nextButton) {
-      console.log("➡ 次のページに移動");
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: "networkidle" }),
-        nextButton.click(),
-      ]);
-      await page.waitForTimeout(500);
-    } else hasNextPage = false;
+    // 🔹 본인만 처리하면 페이지 넘길 필요 없음 → 루프 종료
+    hasNextPage = false;
   }
-  console.log("全社員処理完了");
+  console.log("自分のデータ処理完了 ✅");
 }
-
 // ----------------------
 // メイン
 // ----------------------

@@ -174,7 +174,7 @@ async function login(page, context) {
 }
 
 // ----------------------
-// 社員チェック
+// 社員チェック (更新ボタン 누르지 않고 로그만 출력)
 // ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
@@ -198,11 +198,9 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
       console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
       try {
-        // チェックボタン 클릭
         await staffPage.waitForSelector("#checker", { timeout: 5000 });
         await staffPage.click("#checker");
 
-        // 팝업 대기
         await staffPage.waitForSelector(
           ".ui-dialog-content.ui-widget-content",
           {
@@ -210,7 +208,6 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           }
         );
 
-        // 팝업 텍스트들 추출
         const popupTexts = await staffPage.$$eval(
           "div.ui-dialog-content",
           (els) => els.map((el) => el.innerText.trim())
@@ -235,7 +232,6 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           }
         }
 
-        // ESC로 팝업 닫기
         try {
           await staffPage.keyboard.press("Escape");
           console.log("✅ チェック結果ダイアログをESCで閉じました");
@@ -245,7 +241,6 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           );
         }
 
-        // 에러가 없을 경우 승인 체크
         if (!hasError) {
           try {
             await staffPage.waitForSelector(
@@ -256,13 +251,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
             console.log(`✅ ${staff.name} 承認チェック完了`);
-            // ✅ [更新] 버튼 클릭
-            await staffPage.waitForSelector("#UPDATE-BTN", { timeout: 5000 });
-            await staffPage.click("#UPDATE-BTN");
-            console.log(`✅ ${staff.name} 更新ボタン押下完了`);
-
-            // 갱신 반영될 때까지 잠깐 대기
-            await staffPage.waitForTimeout(2000);
+            console.log(`📝 (更新ボタンは押さずにログ만 출력)`);
           } catch (err) {
             console.error(`❌ ${staff.name} 承認チェック失敗: ${err.message}`);
           }
