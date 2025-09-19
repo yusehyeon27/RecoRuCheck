@@ -409,7 +409,7 @@ async function main() {
   const attachments = [{ filename: logFileName, path: logPath }];
   await sendMail(attachments, mappedName, yearInput, monthInput);
 
-  //await context.close();
+  await context.close();
 }
 
 main();
