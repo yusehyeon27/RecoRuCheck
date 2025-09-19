@@ -274,9 +274,18 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
             // [更新] ボタンクリック & 画面リロード待機
             await Promise.all([
-              staffPage.waitForNavigation({ waitUntil: "networkidle" }),
+              staffPage.waitForResponse(
+                (res) => res.url().includes("update") && res.status() === 200
+              ),
               staffPage.click("#UPDATE-BTN"),
             ]);
+
+            // ✅ 응답 이후 DOM이 갱신되었는지 확인 (예: 토스트 메시지나 완료 다이얼로그)
+            await staffPage
+              .waitForSelector("div.ui-dialog-content", { timeout: 5000 })
+              .catch(() =>
+                console.log("⚠ 更新確認ダイアログが表示されませんでした")
+              );
             console.log(`✅ ${staff.name} 更新ボタン押下完了`);
             logContent += `✅ ${staff.name} 更新完了\n\n`;
           } catch (err) {
