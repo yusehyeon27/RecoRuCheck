@@ -356,32 +356,31 @@ async function main() {
   console.log(`🛈 実行モード: ${config.mode === 1 ? "本番実行" : "確認のみ"}`);
 
   console.log("部署を選択してください：");
-  console.log("1: 経営総括部");
-  console.log("2: 大阪本社");
-  console.log("3: 本社営業部");
-  console.log("4: 事業総括部");
-  console.log("5: システム開発1部");
-  console.log("6: システム開発2部");
-  console.log("7: システム開発3部");
-  console.log("8: エンベデッド部");
-  console.log("9: 人事DX部");
-  console.log("10: ビジネスサポート部");
+  //console.log("1: 経営総括部");
+  console.log("1: 大阪本社");
+  console.log("2: 本社営業部");
+  console.log("3: 事業総括部");
+  console.log("4: システム開発1部");
+  console.log("5: システム開発2部");
+  console.log("6: システム開発3部");
+  console.log("7: エンベデッド部");
+  console.log("8: 人事DX部");
+  console.log("9: ビジネスサポート部");
 
   const choice = prompt("番号入力: ");
-  const yearInput = parseInt(prompt("年入力 (例：2025)："), 10);
-  const monthInput = parseInt(prompt("月入力 (1~12):："), 10);
+  const yearInput = parseInt(prompt("年入力 (例:2025):"), 10);
+  const monthInput = parseInt(prompt("月入力 (1~12):"), 10);
 
   const map = {
-    1: "経営総括部",
-    2: "大阪本社",
-    3: "本社営業部",
-    4: "事業総括部",
-    5: "システム開発1部",
-    6: "システム開発2部",
-    7: "システム開発3部",
-    8: "エンベデッド部",
-    9: "人事DX部",
-    10: "ビジネスサポート部",
+    1: "大阪本社",
+    2: "本社営業部",
+    3: "事業総括部",
+    4: "システム開発1部",
+    5: "システム開発2部",
+    6: "システム開発3部",
+    7: "エンベデッド部",
+    8: "人事DX部",
+    9: "ビジネスサポート部",
   };
   const mappedName = map[choice];
 
