@@ -260,7 +260,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
               { timeout: 5000 }
             );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
-            logContent += `✅ ${staff.name} 承認チェック完了\n`;
+            logContent += `✅ ${staff.name} [確定２]チェック完了\n`;
 
             if (config.mode === 1) {
               // === 本番実行モード ===
@@ -292,9 +292,9 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
             }
           } catch (err) {
             console.error(
-              `❌ ${staff.name} 承認チェック/更新処理失敗: ${err.message}`
+              `❌ ${staff.name} [確定２]チェック/更新処理失敗: ${err.message}`
             );
-            logContent += `❌ ${staff.name} 承認チェック/更新処理失敗: ${err.message}\n`;
+            logContent += `❌ ${staff.name} [確定２]チェック/更新処理失敗: ${err.message}\n`;
           }
         }
       } catch (err) {
@@ -430,22 +430,17 @@ async function main() {
     8: "人事DX部",
     9: "ビジネスサポート部",
   };
-  const mappedName = map[choice + 1];
+  const mappedName = map[choice];
 
   const profile = config.profile.USER_PROFILE_PATH;
   const expath = config.extensions.EXTENSION_PATH;
-  // const temp = config.temp.TEMP_PROFILE_PATH;
-
-  // if (!fs.existsSync(temp)) {
-  //   fs.mkdirSync(temp, { recursive: true });
-  // }
 
   console.log("User Chrome Path:", profile);
   console.log("Extension Path:", expath);
 
   // Playwright Persistent Context
   const context = await chromium.launchPersistentContext(profile, {
-    headless: false,
+    headless: config.headless,
     executablePath: config.edge.EDGE_PATH,
     args: [
       `--load-extension=${expath}`,

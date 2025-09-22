@@ -1,21 +1,14 @@
 {
-  "name": "recoru_check",
+  "name": "recoru-checker",
   "version": "1.0.0",
-  "main": "index.js",
+  "bin": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node recoru_check.js"
+    "build": "pkg . --targets node18-win-x64 --output recoru-checker.exe"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "dotenv": "^17.2.2",
-    "nodemailer": "^7.0.6",
-    "playwright": "^1.55.0",
+    "playwright": "^1.47.0",
     "prompt-sync": "^4.2.0",
-    "puppeteer": "^24.21.0",
-    "puppeteer-core": "^24.21.0"
+    "nodemailer": "^6.9.0",
+    "dotenv": "^16.0.0"
   }
 }
