@@ -32,7 +32,7 @@ async function selectBushoByIndex(page, listSelector, choice) {
   await page.waitForSelector(listSelector, { timeout: 5000 });
 
   const items = await page.$$eval(listSelector, (els) =>
-    els.map((e) => {
+    els.slice(1).map((e) => {
       const span = e.querySelector("span");
       return {
         id: e.getAttribute("id") || "",
@@ -188,7 +188,13 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const trClass = `${yearInput}${mm}${dd}`;
 
   let hasNextPage = true;
-  let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 (mode=${config.mode}) ===\n\n`;
+  const modeMap = {
+    1: "更新処理",
+    2: "確認のみ",
+  };
+
+  let modeLabel = modeMap[config.mode] || `不明(${config.mode})`;
+  let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 (${modeLabel}) ===\n\n`;
 
   const ERROR_LOG_DIR = path.isAbsolute(config.error.ERROR_LOG_DIR)
     ? config.error.ERROR_LOG_DIR
@@ -356,7 +362,6 @@ async function main() {
   console.log(`🛈 実行モード: ${config.mode === 1 ? "本番実行" : "確認のみ"}`);
 
   console.log("部署を選択してください：");
-  //console.log("1: 経営総括部");
   console.log("1: 大阪本社");
   console.log("2: 本社営業部");
   console.log("3: 事業総括部");
@@ -367,9 +372,52 @@ async function main() {
   console.log("8: 人事DX部");
   console.log("9: ビジネスサポート部");
 
-  const choice = prompt("番号入力: ");
-  const yearInput = parseInt(prompt("年入力 (例:2025):"), 10);
-  const monthInput = parseInt(prompt("月入力 (1~12):"), 10);
+  let choice;
+  while (true) {
+    const input = prompt("番号入力: ");
+    choice = Number(input);
+
+    if (Number.isInteger(choice) && choice >= 1 && choice <= 9) {
+      break; // 有効ならループを抜ける
+    }
+
+    console.error("❌ 無効な番号です。1〜9 の整数を入力してください。");
+  }
+
+  console.log(`✅ ${choice} 番を選択しました`);
+
+  // 現在の年月
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // getMonth() は 0〜11 なので +1
+
+  let yearInput, monthInput;
+
+  while (true) {
+    yearInput = parseInt(prompt("年入力 (例:2025):"), 10);
+    monthInput = parseInt(prompt("月入力 (1~12):"), 10);
+
+    if (
+      Number.isInteger(yearInput) &&
+      Number.isInteger(monthInput) &&
+      monthInput >= 1 &&
+      monthInput <= 12
+    ) {
+      // 未来の年月チェック
+      if (
+        yearInput < currentYear ||
+        (yearInput === currentYear && monthInput <= currentMonth)
+      ) {
+        break; // ✅ 有効なのでループ抜ける
+      }
+    }
+
+    console.error(
+      `❌ 無効な年月です。${currentYear}年${currentMonth}月までを入力してください。`
+    );
+  }
+
+  console.log(`✅ 入力された年月: ${yearInput}年${monthInput}月`);
 
   const map = {
     1: "大阪本社",
@@ -382,7 +430,7 @@ async function main() {
     8: "人事DX部",
     9: "ビジネスサポート部",
   };
-  const mappedName = map[choice];
+  const mappedName = map[choice + 1];
 
   const profile = config.profile.USER_PROFILE_PATH;
   const expath = config.extensions.EXTENSION_PATH;
