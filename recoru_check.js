@@ -21,7 +21,9 @@ const now = new Date();
 const timestamp =
   now.getFullYear() +
   String(now.getMonth() + 1).padStart(2, "0") +
-  String(now.getDate()).padStart(2, "0");
+  String(now.getDate()).padStart(2, "0") +
+  String(now.getHours()).padStart(2, "0") +
+  String(now.getMinutes()).padStart(2, "0");
 
 // ----------------------
 // 部署選択 (番号)
@@ -178,7 +180,7 @@ async function login(page, context) {
 }
 
 // ----------------------
-// 社員チェック (承認チェック + 更新 클릭 + Confirm accept)
+// 社員チェック (modeで挙動切替)
 // ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
@@ -186,7 +188,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const trClass = `${yearInput}${mm}${dd}`;
 
   let hasNextPage = true;
-  let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 ===\n\n`;
+  let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 (mode=${config.mode}) ===\n\n`;
 
   const ERROR_LOG_DIR = path.isAbsolute(config.error.ERROR_LOG_DIR)
     ? config.error.ERROR_LOG_DIR
@@ -212,7 +214,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
       console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
       try {
-        // チェックボタン クリック
+        // チェックボタン
         await staffPage.waitForSelector("#checker", { timeout: 5000 });
         await staffPage.click("#checker");
 
@@ -224,7 +226,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           }
         );
 
-        // ポップアップテキスト抽出
+        // ポップアップ結果
         const popupTexts = await staffPage.$$eval(
           "div.ui-dialog-content",
           (els) => els.map((el) => el.innerText.trim())
@@ -241,64 +243,57 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
           }
         }
 
-        // ESCでポップアップ閉じる
-        try {
-          await staffPage.keyboard.press("Escape");
-          console.log("✅ チェック結果ダイアログをESCで閉じました");
-        } catch (err) {
-          console.error(
-            "❌ ESCでダイアログを閉じられませんでした: " + err.message
-          );
-        }
+        // ダイアログ閉じる
+        await staffPage.keyboard.press("Escape").catch(() => {});
 
-        // エラーがない場合のみ承認＋更新実行
+        // エラーなし → modeに応じて処理分岐
         if (!hasError) {
           try {
-            // [確定２]チェック
             await staffPage.waitForSelector(
               'label[for="CHECKBOX-approved_2"]',
-              {
-                timeout: 5000,
-              }
+              { timeout: 5000 }
             );
             await staffPage.click('label[for="CHECKBOX-approved_2"]');
-            console.log(`✅ ${staff.name} 承認チェック完了`);
             logContent += `✅ ${staff.name} 承認チェック完了\n`;
 
-            // (중요) Confirm 다이얼로그가 뜰 수 있으므로 클릭 전에 리스너 등록
-            staffPage.once("dialog", async (dialog) => {
-              console.log(`⚠ 確認ダイアログ表示: ${dialog.message()}`);
-              await dialog.accept(); // OK
-              console.log("✅ ダイアログOK押下完了");
-            });
+            if (config.mode === 1) {
+              // === 本番実行モード ===
+              staffPage.once("dialog", async (dialog) => {
+                console.log(`⚠ 確認ダイアログ表示: ${dialog.message()}`);
+                await dialog.accept();
+              });
 
-            // [更新] ボタンクリック & 画面リロード待機
-            await Promise.all([
-              staffPage.waitForResponse(
-                (res) => res.url().includes("update") && res.status() === 200
-              ),
-              staffPage.click("#UPDATE-BTN"),
-            ]);
+              await Promise.all([
+                staffPage.waitForResponse(
+                  (res) => res.url().includes("update") && res.status() === 200
+                ),
+                staffPage.click("#UPDATE-BTN"),
+              ]);
 
-            // ✅ 응답 이후 DOM이 갱신되었는지 확인 (예: 토스트 메시지나 완료 다이얼로그)
-            await staffPage
-              .waitForSelector("div.ui-dialog-content", { timeout: 5000 })
-              .catch(() =>
-                console.log("⚠ 更新確認ダイアログが表示されませんでした")
-              );
-            console.log(`✅ ${staff.name} 更新ボタン押下完了`);
-            logContent += `✅ ${staff.name} 更新完了\n\n`;
+              await staffPage
+                .waitForSelector("div.ui-dialog-content", { timeout: 5000 })
+                .catch(() =>
+                  console.log("⚠ 更新確認ダイアログが表示されませんでした")
+                );
+
+              console.log(`✅ ${staff.name} 更新ボタン押下完了`);
+              logContent += `✅ ${staff.name} 更新完了\n\n`;
+            } else if (config.mode === 2) {
+              // === 確認のみモード ===
+              await staffPage.waitForSelector("#UPDATE-BTN", { timeout: 5000 });
+              console.log(`🛈 ${staff.name} 更新ボタン確認済み（クリックなし）`);
+              logContent += `🛈 ${staff.name} 更新ボタン確認済み（クリックなし）\n\n`;
+            }
           } catch (err) {
             console.error(
-              `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}`
+              `❌ ${staff.name} 承認チェック/更新処理失敗: ${err.message}`
             );
-            logContent += `❌ ${staff.name} 承認チェック/更新失敗: ${err.message}\n`;
+            logContent += `❌ ${staff.name} 承認チェック/更新処理失敗: ${err.message}\n`;
           }
         }
       } catch (err) {
         console.error(`❌ ${staff.name} チェック失敗: ${err.message}`);
         logContent += `❌ ${staff.name} チェック失敗: ${err.message}\n`;
-        hasError = true;
       }
 
       await staffPage.close();
@@ -306,7 +301,6 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
     const nextButton = await page.$('div.pager li[onclick="nextPage();"]');
     if (nextButton) {
-      console.log("➡ 次のページに移動");
       await Promise.all([
         page.waitForNavigation({ waitUntil: "networkidle" }),
         nextButton.click(),
@@ -316,11 +310,13 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
       hasNextPage = false;
     }
   }
-  console.log("全社員処理完了");
 
   return logContent;
 }
 
+// ----------------------
+// メール送付
+// ----------------------
 async function sendMail(attachments, mappedName, yearInput, monthInput) {
   const transporter = nodemailer.createTransport({
     host: "smtp.worksmobile.com",
@@ -351,6 +347,14 @@ async function sendMail(attachments, mappedName, yearInput, monthInput) {
 // メイン
 // ----------------------
 async function main() {
+  // modeチェック
+  if (config.mode !== 1 && config.mode !== 2) {
+    console.error(`❌ config.json の "mode" が不正です: ${config.mode}`);
+    console.error(`1 = 実際に処理, 2 = ログのみ`);
+    process.exit(1);
+  }
+  console.log(`🛈 実行モード: ${config.mode === 1 ? "本番実行" : "確認のみ"}`);
+
   console.log("部署を選択してください：");
   console.log("1: 経営総括部");
   console.log("2: 大阪本社");
@@ -381,13 +385,13 @@ async function main() {
   };
   const mappedName = map[choice];
 
-  const profile = config.profile.USER_CHROME_PATH;
+  const profile = config.profile.USER_PROFILE_PATH;
   const expath = config.extensions.EXTENSION_PATH;
-  const temp = config.temp.TEMP_PROFILE_PATH;
+  // const temp = config.temp.TEMP_PROFILE_PATH;
 
-  if (!fs.existsSync(temp)) {
-    fs.mkdirSync(temp, { recursive: true });
-  }
+  // if (!fs.existsSync(temp)) {
+  //   fs.mkdirSync(temp, { recursive: true });
+  // }
 
   console.log("User Chrome Path:", profile);
   console.log("Extension Path:", expath);
@@ -422,7 +426,7 @@ async function main() {
   );
   const logContent = await processStaffPages(page, yearInput, monthInput);
 
-  const logFileName = `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果.log`;
+  const logFileName = `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果${timestamp}.log`;
   const logPath = path.join(
     path.isAbsolute(config.error.ERROR_LOG_DIR)
       ? config.error.ERROR_LOG_DIR
