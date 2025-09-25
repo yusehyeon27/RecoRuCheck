@@ -2,7 +2,7 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const prompt = require("prompt-sync")();
-const { chromium } = require("playwright");
+const { chromium } = require("playwright-core");
 const nodemailer = require("nodemailer");
 
 // ----------------------
@@ -31,6 +31,17 @@ const timestamp =
 async function selectBushoByIndex(page, listSelector, choice) {
   await page.waitForSelector(listSelector, { timeout: 5000 });
 
+  //serialized関連修正
+  // const items = await page.$$eval(listSelector, (els) =>
+  //   els.slice(1).map((e) => {
+  //     const span = e.querySelector("span");
+  //     return {
+  //       id: e.getAttribute("id") || "",
+  //       text: (span ? span.innerText : e.innerText).trim(),
+  //     };
+  //   })
+  // );
+  // 直接インライン関数で渡す
   const items = await page.$$eval(listSelector, (els) =>
     els.slice(1).map((e) => {
       const span = e.querySelector("span");
@@ -40,6 +51,7 @@ async function selectBushoByIndex(page, listSelector, choice) {
       };
     })
   );
+  //serialized関連修正
 
   const index = parseInt(choice, 10) - 1;
   if (isNaN(index) || index < 0 || index >= items.length) {
@@ -67,6 +79,23 @@ async function selectBushoByIndex(page, listSelector, choice) {
 async function selectBushoByName(page, listSelector, name) {
   await page.waitForSelector(listSelector, { timeout: 5000 });
 
+  //serialized関連修正
+  // const clicked = await page.$$eval(
+  //   listSelector,
+  //   (els, targetName) => {
+  //     const item = els.find((e) => {
+  //       const span = e.querySelector("span");
+  //       return span && span.innerText.trim() === targetName;
+  //     });
+  //     if (!item) return false;
+  //     const a = item.querySelector("a");
+  //     if (!a) return false;
+  //     a.click();
+  //     return true;
+  //   },
+  //   name
+  // );
+  // 直接インライン関数で渡す
   const clicked = await page.$$eval(
     listSelector,
     (els, targetName) => {
@@ -82,6 +111,7 @@ async function selectBushoByName(page, listSelector, name) {
     },
     name
   );
+  //serialized関連修正
 
   if (clicked) console.log(`✅ "${name}" 選択完了`);
   else console.error(`❌ "${name}" 選択失敗`);
@@ -95,8 +125,34 @@ async function selectYearMonth(page, targetYear, targetMonth) {
   await page.waitForSelector(".acm-displayDate", { timeout: 10000 });
   await page.click(".acm-displayDate");
 
+  // while (true) {
+  //   const [currentYear, currentMonth] = await page.evaluate(() => {
+  //     const year = parseInt(
+  //       document.querySelector(".ui-datepicker-year").innerText,
+  //       10
+  //     );
+  //     const monthText = document.querySelector(
+  //       ".ui-datepicker-month"
+  //     ).innerText;
+  //     const month = parseInt(monthText.replace("月", ""), 10);
+  //     return [year, month];
+  //   });
+
+  //   if (currentYear === targetYear && currentMonth === targetMonth) break;
+
+  //   if (
+  //     currentYear > targetYear ||
+  //     (currentYear === targetYear && currentMonth > targetMonth)
+  //   ) {
+  //     await page.click(".ui-datepicker-prev");
+  //   } else {
+  //     await page.click(".ui-datepicker-next");
+  //   }
+  //   await page.waitForTimeout(200);
+  // }
+
   while (true) {
-    const [currentYear, currentMonth] = await page.evaluate(() => {
+    const [currentYear, currentMonth] = await page.evaluate(function () {
       const year = parseInt(
         document.querySelector(".ui-datepicker-year").innerText,
         10
@@ -121,10 +177,20 @@ async function selectYearMonth(page, targetYear, targetMonth) {
     await page.waitForTimeout(200);
   }
 
-  await page.$$eval(".ui-datepicker-calendar td a", (els) => {
-    const firstDay = els.find((e) => e.innerText === "1");
-    if (firstDay) firstDay.click();
-  });
+  //serialized関連修正
+  // await page.$$eval(".ui-datepicker-calendar td a", (els) => {
+  //   const firstDay = els.find((e) => e.innerText === "1");
+  //   if (firstDay) firstDay.click();
+  // });
+  // 直接インライン関数で渡す
+  await page.$$eval(
+    ".ui-datepicker-calendar td a",
+    (els) => {
+      const firstDay = els.find((e) => e.innerText === "1");
+      if (firstDay) firstDay.click();
+    }
+  );
+  //serialized関連修正
 
   console.log(`✅ ${targetYear}年 ${targetMonth}月 1日 選択完了`);
 }
@@ -206,10 +272,22 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
   while (hasNextPage) {
     await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
+
+    //serialized関連修正
+    // const staffList = await page.$$eval(
+    //   `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
+    //   (els) => els.map((el) => ({ href: el.href, name: el.textContent.trim() }))
+    // );
+    // 直接インライン関数で渡す
     const staffList = await page.$$eval(
       `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
-      (els) => els.map((el) => ({ href: el.href, name: el.textContent.trim() }))
+      (els) =>
+        els.map((el) => ({
+          href: el.href,
+          name: el.textContent.trim(),
+        }))
     );
+    //serialized関連修正
 
     console.log(`${staffList.length}人の社員リスト取得完了`);
 
@@ -233,10 +311,17 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
         );
 
         // ポップアップ結果
+        //serialized関連修正
+        // const popupTexts = await staffPage.$$eval(
+        //   "div.ui-dialog-content",
+        //   (els) => els.map((el) => el.innerText.trim())
+        // );
+        // 直接インライン関数で渡す
         const popupTexts = await staffPage.$$eval(
           "div.ui-dialog-content",
           (els) => els.map((el) => el.innerText.trim())
         );
+        //serialized関連修正
 
         for (const text of popupTexts) {
           console.log(`👉 ${staff.name} チェック結果: ${text}`);
