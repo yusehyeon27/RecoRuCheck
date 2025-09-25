@@ -368,7 +368,11 @@ async function main() {
     process.exit(1);
   }
   console.log(`🛈 実行モード: ${config.mode === 1 ? "本番実行" : "確認のみ"}`);
-
+  console.log(
+    `🖥 headless モード: ${
+      config.headless === true ? "ON (非表示)" : "OFF (ブラウザ表示)"
+    }`
+  );
   const profile = config.profile.USER_PROFILE_PATH;
   const expath = config.extensions.EXTENSION_PATH;
 
@@ -444,11 +448,12 @@ async function main() {
       monthInput >= 1 &&
       monthInput <= 12
     ) {
-      // 未来の年月チェック
-      if (
-        yearInput < currentYear ||
-        (yearInput === currentYear && monthInput <= currentMonth)
-      ) {
+      // 範囲チェック: 2020/01 ～ 現在年月まで
+      const inputDate = new Date(yearInput, monthInput - 1); // 月は0始まり
+      const minDate = new Date(2020, 0); // 2020/01
+      const maxDate = new Date(currentYear, currentMonth - 1); // 現在の年月
+
+      if (inputDate >= minDate && inputDate <= maxDate) {
         break; // ✅ 有効なのでループ抜ける
       }
     }
