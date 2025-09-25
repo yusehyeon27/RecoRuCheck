@@ -17,6 +17,7 @@ if (!fs.existsSync(configPath)) {
 }
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
+// 現在日時をタイムスタンプ形式で取得
 const now = new Date();
 const timestamp =
   now.getFullYear() +
@@ -28,49 +29,35 @@ const timestamp =
 // ----------------------
 // 部署選択 (番号)
 // ----------------------
-async function selectBushoByIndex(page, listSelector, choice) {
+async function showBushoListBetween(page, listSelector, startName, endName) {
   await page.waitForSelector(listSelector, { timeout: 5000 });
 
-  //serialized関連修正
-  // const items = await page.$$eval(listSelector, (els) =>
-  //   els.slice(1).map((e) => {
-  //     const span = e.querySelector("span");
-  //     return {
-  //       id: e.getAttribute("id") || "",
-  //       text: (span ? span.innerText : e.innerText).trim(),
-  //     };
-  //   })
-  // );
-  // 直接インライン関数で渡す
-  const items = await page.$$eval(listSelector, (els) =>
-    els.slice(1).map((e) => {
-      const span = e.querySelector("span");
-      return {
-        id: e.getAttribute("id") || "",
-        text: (span ? span.innerText : e.innerText).trim(),
-      };
-    })
+  // 全部署リスト取得
+  const items = await page.$$eval("#SIDE-MENU li", (els) =>
+    els.map((e) =>
+      (e.querySelector("span")
+        ? e.querySelector("span").innerText
+        : e.innerText
+      ).trim()
+    )
   );
-  //serialized関連修正
 
-  const index = parseInt(choice, 10) - 1;
-  if (isNaN(index) || index < 0 || index >= items.length) {
-    console.error("番号が正しくありません");
-    return false;
+  const startIndex = items.indexOf(startName);
+  const endIndex = items.indexOf(endName);
+
+  if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex - 1) {
+    console.error("❌ 範囲が正しく見つかりませんでした");
+    return [];
   }
 
-  const targetId = items[index].id;
-  const sel = `#SIDE-MENU li[id="${targetId}"] a`;
-  const handle = await page.$(sel);
-  if (handle) {
-    await page.waitForTimeout(500);
-    await handle.click();
-    console.log(`✅ ${items[index].text} 選択完了`);
-    return true;
-  } else {
-    console.error("handle.clickが見つかりません");
-    return false;
-  }
+  const rangeItems = items.slice(startIndex + 1, endIndex);
+
+  console.log("部署を選択してください：");
+  rangeItems.forEach((name, idx) => {
+    console.log(`${idx + 1}: ${name}`);
+  });
+
+  return rangeItems;
 }
 
 // ----------------------
@@ -79,23 +66,7 @@ async function selectBushoByIndex(page, listSelector, choice) {
 async function selectBushoByName(page, listSelector, name) {
   await page.waitForSelector(listSelector, { timeout: 5000 });
 
-  //serialized関連修正
-  // const clicked = await page.$$eval(
-  //   listSelector,
-  //   (els, targetName) => {
-  //     const item = els.find((e) => {
-  //       const span = e.querySelector("span");
-  //       return span && span.innerText.trim() === targetName;
-  //     });
-  //     if (!item) return false;
-  //     const a = item.querySelector("a");
-  //     if (!a) return false;
-  //     a.click();
-  //     return true;
-  //   },
-  //   name
-  // );
-  // 直接インライン関数で渡す
+  // 名前で一致する項目をクリック
   const clicked = await page.$$eval(
     listSelector,
     (els, targetName) => {
@@ -111,7 +82,6 @@ async function selectBushoByName(page, listSelector, name) {
     },
     name
   );
-  //serialized関連修正
 
   if (clicked) console.log(`✅ "${name}" 選択完了`);
   else console.error(`❌ "${name}" 選択失敗`);
@@ -125,34 +95,9 @@ async function selectYearMonth(page, targetYear, targetMonth) {
   await page.waitForSelector(".acm-displayDate", { timeout: 10000 });
   await page.click(".acm-displayDate");
 
-  // while (true) {
-  //   const [currentYear, currentMonth] = await page.evaluate(() => {
-  //     const year = parseInt(
-  //       document.querySelector(".ui-datepicker-year").innerText,
-  //       10
-  //     );
-  //     const monthText = document.querySelector(
-  //       ".ui-datepicker-month"
-  //     ).innerText;
-  //     const month = parseInt(monthText.replace("月", ""), 10);
-  //     return [year, month];
-  //   });
-
-  //   if (currentYear === targetYear && currentMonth === targetMonth) break;
-
-  //   if (
-  //     currentYear > targetYear ||
-  //     (currentYear === targetYear && currentMonth > targetMonth)
-  //   ) {
-  //     await page.click(".ui-datepicker-prev");
-  //   } else {
-  //     await page.click(".ui-datepicker-next");
-  //   }
-  //   await page.waitForTimeout(200);
-  // }
-
+  // 入力した年月になるまでボタンクリック
   while (true) {
-    const [currentYear, currentMonth] = await page.evaluate(function () {
+    const [currentYear, currentMonth] = await page.evaluate(() => {
       const year = parseInt(
         document.querySelector(".ui-datepicker-year").innerText,
         10
@@ -177,20 +122,11 @@ async function selectYearMonth(page, targetYear, targetMonth) {
     await page.waitForTimeout(200);
   }
 
-  //serialized関連修正
-  // await page.$$eval(".ui-datepicker-calendar td a", (els) => {
-  //   const firstDay = els.find((e) => e.innerText === "1");
-  //   if (firstDay) firstDay.click();
-  // });
-  // 直接インライン関数で渡す
-  await page.$$eval(
-    ".ui-datepicker-calendar td a",
-    (els) => {
-      const firstDay = els.find((e) => e.innerText === "1");
-      if (firstDay) firstDay.click();
-    }
-  );
-  //serialized関連修正
+  // 1日を選択
+  await page.$$eval(".ui-datepicker-calendar td a", (els) => {
+    const firstDay = els.find((e) => e.innerText === "1");
+    if (firstDay) firstDay.click();
+  });
 
   console.log(`✅ ${targetYear}年 ${targetMonth}月 1日 選択完了`);
 }
@@ -207,6 +143,8 @@ async function login(page, context) {
   });
 
   await page.goto("https://app.recoru.in/ap/", { waitUntil: "networkidle" });
+
+  // すでにログイン済みの場合は一度ログアウト
   const currentUrl = page.url();
   if (currentUrl.includes("/ap/home")) {
     console.log("⚠ すでにログイン済みです。 ログアウト後、再ログインします。");
@@ -222,6 +160,8 @@ async function login(page, context) {
       process.exit(1);
     }
   }
+
+  // ログイン情報入力
   await page.waitForSelector("#authId", { timeout: 5000 });
   await page.fill("#contractId", config.recoru.RECORU_CONTRACTID);
   await page.fill("#authId", config.recoru.RECORU_USER);
@@ -246,7 +186,7 @@ async function login(page, context) {
 }
 
 // ----------------------
-// 社員チェック (modeで挙動切替)
+// 社員チェック処理 (modeに応じて更新/確認)
 // ----------------------
 async function processStaffPages(page, yearInput, monthInput, day = 1) {
   const mm = String(monthInput).padStart(2, "0");
@@ -262,6 +202,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
   let modeLabel = modeMap[config.mode] || `不明(${config.mode})`;
   let logContent = `=== ${yearInput}年${monthInput}月 社員チェック結果 (${modeLabel}) ===\n\n`;
 
+  // エラーログ保存ディレクトリ
   const ERROR_LOG_DIR = path.isAbsolute(config.error.ERROR_LOG_DIR)
     ? config.error.ERROR_LOG_DIR
     : path.join(process.cwd(), config.error.ERROR_LOG_DIR);
@@ -272,22 +213,10 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
   while (hasNextPage) {
     await page.waitForSelector(`tr[class*="${trClass}"]`, { timeout: 10000 });
-
-    //serialized関連修正
-    // const staffList = await page.$$eval(
-    //   `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
-    //   (els) => els.map((el) => ({ href: el.href, name: el.textContent.trim() }))
-    // );
-    // 直接インライン関数で渡す
     const staffList = await page.$$eval(
       `tr[class*="${trClass}"] td.item-userNameAndId a.link`,
-      (els) =>
-        els.map((el) => ({
-          href: el.href,
-          name: el.textContent.trim(),
-        }))
+      (els) => els.map((el) => ({ href: el.href, name: el.textContent.trim() }))
     );
-    //serialized関連修正
 
     console.log(`${staffList.length}人の社員リスト取得完了`);
 
@@ -298,11 +227,11 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
       console.log(`✅ 処理中: ${staff.name} (${staff.href})`);
       try {
-        // チェックボタン
+        // チェックボタン押下
         await staffPage.waitForSelector("#checker", { timeout: 5000 });
         await staffPage.click("#checker");
 
-        // ポップアップ待機
+        // ポップアップ待機と結果取得
         await staffPage.waitForSelector(
           ".ui-dialog-content.ui-widget-content",
           {
@@ -311,17 +240,10 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
         );
 
         // ポップアップ結果
-        //serialized関連修正
-        // const popupTexts = await staffPage.$$eval(
-        //   "div.ui-dialog-content",
-        //   (els) => els.map((el) => el.innerText.trim())
-        // );
-        // 直接インライン関数で渡す
         const popupTexts = await staffPage.$$eval(
           "div.ui-dialog-content",
           (els) => els.map((el) => el.innerText.trim())
         );
-        //serialized関連修正
 
         for (const text of popupTexts) {
           console.log(`👉 ${staff.name} チェック結果: ${text}`);
@@ -349,6 +271,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
             if (config.mode === 1) {
               // === 本番実行モード ===
+              // 更新ボタン押下
               staffPage.once("dialog", async (dialog) => {
                 console.log(`⚠ 確認ダイアログ表示: ${dialog.message()}`);
                 await dialog.accept();
@@ -389,7 +312,7 @@ async function processStaffPages(page, yearInput, monthInput, day = 1) {
 
       await staffPage.close();
     }
-
+    // 次ページがある場合、移動
     const nextButton = await page.$('div.pager li[onclick="nextPage();"]');
     if (nextButton) {
       await Promise.all([
@@ -446,30 +369,63 @@ async function main() {
   }
   console.log(`🛈 実行モード: ${config.mode === 1 ? "本番実行" : "確認のみ"}`);
 
-  console.log("部署を選択してください：");
-  console.log("1: 大阪本社");
-  console.log("2: 本社営業部");
-  console.log("3: 事業総括部");
-  console.log("4: システム開発1部");
-  console.log("5: システム開発2部");
-  console.log("6: システム開発3部");
-  console.log("7: エンベデッド部");
-  console.log("8: 人事DX部");
-  console.log("9: ビジネスサポート部");
+  const profile = config.profile.USER_PROFILE_PATH;
+  const expath = config.extensions.EXTENSION_PATH;
 
-  let choice;
-  while (true) {
-    const input = prompt("番号入力: ");
-    choice = Number(input);
+  console.log("User Chrome Path:", profile);
+  console.log("Extension Path:", expath);
 
-    if (Number.isInteger(choice) && choice >= 1 && choice <= 9) {
-      break; // 有効ならループを抜ける
+  // Playwright Persistent Context
+  const context = await chromium.launchPersistentContext(profile, {
+    headless: config.headless,
+    executablePath: config.edge.EDGE_PATH,
+    args: [
+      `--load-extension=${expath}`,
+      "--start-maximized",
+      `--disable-extensions-except=${expath}`,
+    ],
+    viewport: null,
+  });
+
+  const page = await context.newPage();
+
+  // ログイン
+  await login(page, context);
+
+  // 部署選択
+  const listSelector = "#SIDE-MENU li";
+
+  const startName = "経営統括部";
+  const endName = "東京支社";
+
+  const items = await showBushoListBetween(
+    page,
+    listSelector,
+    startName,
+    endName
+  );
+
+  let selectedName = "";
+
+  if (items.length > 0) {
+    let choice;
+    while (true) {
+      const input = prompt("番号入力: ");
+      choice = Number(input);
+
+      if (Number.isInteger(choice) && choice >= 1 && choice <= items.length) {
+        break;
+      }
+      console.error(
+        `❌ 無効な番号です。1〜${items.length} の整数を入力してください。`
+      );
     }
 
-    console.error("❌ 無効な番号です。1〜9 の整数を入力してください。");
-  }
+    selectedName = items[choice - 1];
+    console.log(`✅ ${choice} 番 (${selectedName}) を選択しました`);
 
-  console.log(`✅ ${choice} 番を選択しました`);
+    await selectBushoByName(page, listSelector, selectedName);
+  }
 
   // 現在の年月
   const now = new Date();
@@ -477,7 +433,7 @@ async function main() {
   const currentMonth = now.getMonth() + 1; // getMonth() は 0〜11 なので +1
 
   let yearInput, monthInput;
-
+  // 年月入力
   while (true) {
     yearInput = parseInt(prompt("年入力 (例:2025):"), 10);
     monthInput = parseInt(prompt("月入力 (1~12):"), 10);
@@ -504,56 +460,15 @@ async function main() {
 
   console.log(`✅ 入力された年月: ${yearInput}年${monthInput}月`);
 
-  const map = {
-    1: "大阪本社",
-    2: "本社営業部",
-    3: "事業総括部",
-    4: "システム開発1部",
-    5: "システム開発2部",
-    6: "システム開発3部",
-    7: "エンベデッド部",
-    8: "人事DX部",
-    9: "ビジネスサポート部",
-  };
-  const mappedName = map[choice];
-
-  const profile = config.profile.USER_PROFILE_PATH;
-  const expath = config.extensions.EXTENSION_PATH;
-
-  console.log("User Chrome Path:", profile);
-  console.log("Extension Path:", expath);
-
-  // Playwright Persistent Context
-  const context = await chromium.launchPersistentContext(profile, {
-    headless: config.headless,
-    executablePath: config.edge.EDGE_PATH,
-    args: [
-      `--load-extension=${expath}`,
-      "--start-maximized",
-      `--disable-extensions-except=${expath}`,
-    ],
-    viewport: null,
-  });
-
-  const page = await context.newPage();
-
-  // ログイン
-  await login(page, context);
-
-  const listSelector = "#SIDE-MENU li";
-  let okA = await selectBushoByIndex(page, listSelector, choice);
-  if (!okA && mappedName) {
-    await selectBushoByName(page, listSelector, mappedName);
-  }
-
   await selectYearMonth(page, yearInput, monthInput);
 
   console.log(
-    `部署、年月選択完了：${mappedName}, ${yearInput}年 ${monthInput}月`
+    `部署、年月選択完了：${selectedName}, ${yearInput}年 ${monthInput}月`
   );
   const logContent = await processStaffPages(page, yearInput, monthInput);
 
-  const logFileName = `${mappedName} ${yearInput}年${monthInput}月-社員チェック結果${timestamp}.log`;
+  // エラーログ保存
+  const logFileName = `${selectedName} ${yearInput}年${monthInput}月-社員チェック結果${timestamp}.log`;
   const logPath = path.join(
     path.isAbsolute(config.error.ERROR_LOG_DIR)
       ? config.error.ERROR_LOG_DIR
@@ -564,7 +479,7 @@ async function main() {
   console.log("📄 ログ保存完了: " + logPath);
 
   const attachments = [{ filename: logFileName, path: logPath }];
-  await sendMail(attachments, mappedName, yearInput, monthInput);
+  await sendMail(attachments, selectedName, yearInput, monthInput);
 
   await context.close();
 }

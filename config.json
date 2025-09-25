@@ -1,0 +1,28 @@
+{
+  "mode": 1,
+  "headless": false,
+  "recoru": {
+    "RECORU_CONTRACTID": "191333",
+    "RECORU_USER": "bs_admin",
+    "RECORU_PASS": "upl_admin_1994"
+  },
+  "from": {
+    "LINE_USER": "seunghyun-min@upload-gp.co.jp",
+    "LINE_PASS": "LP2p8GoGW8os"
+  },
+  "mail": {
+    "MAIL_TO": "seunghyun-min@upload-gp.co.jp"
+  },
+  "error": {
+    "ERROR_LOG_DIR": "./error"
+  },
+  "edge": {
+    "EDGE_PATH": "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+  },
+  "profile": {
+    "USER_PROFILE_PATH": "C:/Users/upl-member/AppData/Local/Google/Chrome/User Data/Default"
+  },
+  "extensions": {
+    "EXTENSION_PATH": "C:/Users/upl-member/AppData/Local/Google/Chrome/User Data/Default/Extensions/bnpbipoagoppnfbeohpjecioikehbbpj/3.3.2_0"
+  }
+}
